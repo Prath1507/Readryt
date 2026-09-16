@@ -1,4 +1,7 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const {
+  downloadWhatsAppMedia,
+} = require("./services/media.service");
 
 let client;
 let isConnected = false;
@@ -60,37 +63,41 @@ const startWhatsApp = async (phoneNumber, userId) => {
           );
         });
 
-        client.on("disconnected", async (reason) => {
-          console.log(
-            `WhatsApp disconnected for user ${userId}:`,
-            reason
-          );
+     client.on("disconnected", (reason) => {
+  console.log(
+    `WhatsApp disconnected for user ${userId}:`,
+    reason
+  );
 
-          isConnected = false;
+  isConnected = false;
+  client = null;
+});
 
-          try {
-            await client.destroy();
+       client.on("message", async (message) => {
+  console.log("New WhatsApp message received");
+  console.log("From:", message.from);
+  console.log("Message:", message.body);
+  console.log("Has Media:", message.hasMedia);
+  console.log("Timestamp:", message.timestamp);
+  console.log("Message ID:", message.id);
 
-            console.log(
-              `WhatsApp client cleaned up for user ${userId}`
-            );
-          } catch (error) {
-            console.error(
-              "WhatsApp cleanup error:",
-              error
-            );
-          }
+if (message.hasMedia) {
+  try {
+    const media = await downloadWhatsAppMedia(
+      message,
+      client
+    );
 
-          client = null;
-        });
+    console.log("Media processed:", media);
 
-        client.on("message", async (message) => {
-          console.log("New WhatsApp message received");
-          console.log("From:", message.from);
-          console.log("Message:", message.body);
-          console.log("Has Media:", message.hasMedia);
-          console.log("Timestamp:", message.timestamp);
-        });
+  } catch (error) {
+    console.error(
+      "Media processing error:",
+      error
+    );
+  }
+}
+});
 
         await client.initialize();
 
