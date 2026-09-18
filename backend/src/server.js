@@ -53,10 +53,11 @@ app.post("/api/whatsapp/connect", async (req, res) => {
       userId
     );
 
-    const pairingCode = await startWhatsApp(
-      phoneNumber,
-      userId
-    );
+   const pairingCode = await startWhatsApp(
+  phoneNumber,
+  userId,
+  token
+);
 
     return res.json({
       message: "Pairing code generated",

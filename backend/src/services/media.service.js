@@ -97,13 +97,14 @@ const downloadWhatsAppMedia = async (message, client) => {
     );
   }
 
-  const uploadsDir = path.join(
+  // Temporary folder
+  const tempDir = path.join(
     __dirname,
-    "../../uploads"
+    "../../uploads/temp"
   );
 
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, {
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, {
       recursive: true,
     });
   }
@@ -115,7 +116,7 @@ const downloadWhatsAppMedia = async (message, client) => {
     `${Date.now()}-${message.id.id}.${extension}`;
 
   const filePath = path.join(
-    uploadsDir,
+    tempDir,
     fileName
   );
 
@@ -124,13 +125,17 @@ const downloadWhatsAppMedia = async (message, client) => {
     Buffer.from(result.data, "base64")
   );
 
-  console.log("Media downloaded:", filePath);
+  console.log("Temporary media saved:", filePath);
 
   return {
     fileName,
     filePath,
     mimetype: result.mimetype,
     filesize: result.filesize,
+
+    // Important:
+    // This file is temporary and must be deleted
+    // after OCR/processing is finished.
   };
 };
 

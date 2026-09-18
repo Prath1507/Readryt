@@ -12,39 +12,52 @@ function Onboarding() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    setLoading(true);
-    setMessage("");
+  setLoading(true);
+  setMessage("");
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-    if (!session) {
-      navigate("/login");
-      return;
-    }
+  if (!session) {
+    navigate("/login");
+    return;
+  }
 
-    const { error } = await supabase
-      .from("users")
-      .update({
-        name: name,
-        business_name: businessName,
-        business_type: businessType,
-        onboarding_completed: true,
-      })
-      .eq("id", session.user.id);
+  // Create the business
+  const { error: businessError } = await supabase
+    .from("businesses")
+    .insert({
+      user_id: session.user.id,
+      business_name: businessName,
+      business_type: businessType,
+    });
 
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
-    }
+  if (businessError) {
+    setMessage(businessError.message);
+    setLoading(false);
+    return;
+  }
 
-    navigate("/");
-  };
+  // Mark onboarding as completed
+  const { error: userError } = await supabase
+    .from("users")
+    .update({
+      onboarding_completed: true,
+    })
+    .eq("id", session.user.id);
+
+  if (userError) {
+    setMessage(userError.message);
+    setLoading(false);
+    return;
+  }
+
+  navigate("/");
+};
 
   return (
     <div>
