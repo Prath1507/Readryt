@@ -111,8 +111,28 @@ function extractBank(texts) {
   return normalizeText(bankText);
 }
 
-function extractPaymentReferences(texts) {
+function extractPaymentReferences(
+  texts,
+  {
+    transactionId = null,
+    googleTransactionId = null,
+    paymentDate = null,
+    paymentTime = null,
+    amountText = null,
+  } = {}
+) {
   const references = [];
+
+  const normalizedTransactionId =
+    normalizeText(transactionId);
+
+  const normalizedGoogleTransactionId =
+    normalizeText(googleTransactionId);
+
+  const normalizedAmount =
+    normalizeText(amountText)
+      .replace(/^₹/, "")
+      .replace(/,/g, "");
 
   for (const text of texts) {
     const value = normalizeText(text);
@@ -121,6 +141,22 @@ function extractPaymentReferences(texts) {
       continue;
     }
 
+    // Known structured fields
+    if (
+      normalizedTransactionId &&
+      value === normalizedTransactionId
+    ) {
+      continue;
+    }
+
+    if (
+      normalizedGoogleTransactionId &&
+      value === normalizedGoogleTransactionId
+    ) {
+      continue;
+    }
+
+    // Sender / receiver structured fields
     if (/^from:/i.test(value)) {
       continue;
     }
@@ -129,6 +165,7 @@ function extractPaymentReferences(texts) {
       continue;
     }
 
+    // Transaction labels
     if (/upi transaction id/i.test(value)) {
       continue;
     }
@@ -141,6 +178,11 @@ function extractPaymentReferences(texts) {
       continue;
     }
 
+    if (/utr\s*:/i.test(value)) {
+      continue;
+    }
+
+    // Payment/application labels
     if (/powered by/i.test(value)) {
       continue;
     }
@@ -169,6 +211,65 @@ function extractPaymentReferences(texts) {
       continue;
     }
 
+    if (/pay again/i.test(value)) {
+      continue;
+    }
+
+    // Date/time
+    if (
+      /\b\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}/i.test(
+        value
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      /\b\d{1,2}:\d{2}\s*(am|pm)\b/i.test(
+        value
+      )
+    ) {
+      continue;
+    }
+
+    // Pure amount / OCR amount noise
+    const amountCandidate = value
+      .replace(/^₹/, "")
+      .replace(/^र/, "")
+      .replace(/[०-९]/g, (digit) => {
+        const digits = {
+          "०": "0",
+          "१": "1",
+          "२": "2",
+          "३": "3",
+          "४": "4",
+          "५": "5",
+          "६": "6",
+          "७": "7",
+          "८": "8",
+          "९": "9",
+        };
+
+        return digits[digit];
+      })
+      .replace(/,/g, "");
+
+    if (
+      /^\d+(?:\.\d{1,2})?$/.test(
+        amountCandidate
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      normalizedAmount &&
+      amountCandidate === normalizedAmount
+    ) {
+      continue;
+    }
+
+    // Very short OCR noise
     if (value.length < 3) {
       continue;
     }
@@ -180,76 +281,154 @@ function extractPaymentReferences(texts) {
 }
 
 function extractAmount(ocrResult) {
-  const texts = ocrResult.texts || [];
-  const boxes = ocrResult.boxes || [];
+  const hindiTexts = ocrResult.hindi?.texts || [];
+  const hindiBoxes = ocrResult.hindi?.boxes || [];
 
   const candidates = [];
 
-  for (let i = 0; i < texts.length; i++) {
-    const text = normalizeText(texts[i]);
+  // Devanagari digits → normal digits
+  const devanagariDigits = {
+    "०": "0",
+    "१": "1",
+    "२": "2",
+    "३": "3",
+    "४": "4",
+    "५": "5",
+    "६": "6",
+    "७": "7",
+    "८": "8",
+    "९": "9",
+  };
 
-    if (!text || !boxes[i]) {
+  function normalizeAmountText(text) {
+    let value = normalizeText(text)
+      .replace(/\s+/g, "");
+
+    // Convert Devanagari digits to normal digits
+    value = value.replace(
+      /[०-९]/g,
+      (digit) => devanagariDigits[digit]
+    );
+
+    // Hindi OCR sometimes reads ₹ as "र".
+    // In the amount context, treat leading "र" as ₹.
+    if (/^र\d[\d,]*(?:\.\d{1,2})?$/.test(value)) {
+      value = "₹" + value.slice(1);
+    }
+
+    return value;
+  }
+
+  for (let i = 0; i < hindiTexts.length; i++) {
+    const text = normalizeAmountText(hindiTexts[i]);
+
+    if (!text || !hindiBoxes[i]) {
       continue;
     }
 
-    const cleaned = text
-      .replace(/,/g, "")
-      .replace(/\s/g, "");
-
-    if (!/^\d+(?:\.\d{1,2})?$/.test(cleaned)) {
+    // We only accept values that contain the rupee marker.
+    if (!/^₹\d[\d,]*(?:\.\d{1,2})?$/.test(text)) {
       continue;
     }
 
-    const amount = Number(cleaned);
-
-    if (!Number.isFinite(amount)) {
-      continue;
-    }
-
-    // Ignore very large numbers such as transaction IDs.
-    if (amount > 1000000) {
-      continue;
-    }
-
-    const [x1, y1, x2, y2] = boxes[i];
+    const [x1, y1, x2, y2] = hindiBoxes[i];
 
     const width = x2 - x1;
     const height = y2 - y1;
     const area = width * height;
 
     candidates.push({
-      amount,
-      text,
+      amountText: text,
+      box: [x1, y1, x2, y2],
       y1,
       area,
+      score: ocrResult.hindi.scores?.[i] || 0,
     });
   }
 
   if (candidates.length === 0) {
+    console.log("No Hindi OCR amount found.");
     return null;
   }
-
-  /*
-   * Payment amount is normally one of the
-   * largest numeric texts near the top.
-   */
 
   candidates.sort((a, b) => {
     const scoreA =
       a.area -
-      a.y1 * 2;
+      a.y1 * 2 +
+      a.score * 100;
 
     const scoreB =
       b.area -
-      b.y1 * 2;
+      b.y1 * 2 +
+      b.score * 100;
 
     return scoreB - scoreA;
   });
 
-  return candidates[0].amount;
+  console.log(
+    "Selected Hindi amount candidate:",
+    candidates[0]
+  );
+
+
+  return candidates[0].amountText;
 }
 
-function extractPaymentData(ocrResult) {
+function extractMessageContext(messageText) {
+  const text = normalizeText(messageText);
+
+  if (!text) {
+    return {
+      purpose: null,
+      references: [],
+    };
+  }
+
+  const words = text.split(/\s+/);
+
+  const purposeKeywords = [
+    "maintenance",
+    "rent",
+    "booking",
+    "travel",
+    "fee",
+    "fees",
+    "order",
+    "product",
+    "service",
+  ];
+
+  let purpose = null;
+  const references = [];
+
+  for (const word of words) {
+    const cleanWord = word
+      .replace(/[.,!?;:()[\]{}]/g, "")
+      .trim();
+
+    if (!cleanWord) {
+      continue;
+    }
+
+    const lowerWord = cleanWord.toLowerCase();
+
+    if (purposeKeywords.includes(lowerWord)) {
+      purpose = cleanWord;
+      continue;
+    }
+
+    references.push(cleanWord);
+  }
+
+  return {
+    purpose,
+    references,
+  };
+}
+
+
+
+function extractPaymentData(ocrResult, messageText) {
   if (!ocrResult || !ocrResult.success) {
     return {
       success: false,
@@ -259,41 +438,77 @@ function extractPaymentData(ocrResult) {
 
   const texts = ocrResult.texts || [];
 
+  const whatsappMessage =
+  normalizeText(messageText);
+
+console.log(
+  "WhatsApp message context:",
+  whatsappMessage
+);
+
+const messageContext =
+  extractMessageContext(whatsappMessage);
+
+console.log(
+  "Message context extracted:",
+  messageContext
+);
+
   const {
     paymentDate,
     paymentTime,
   } = extractDateTime(texts);
 
+  const amountText =
+  extractAmount(ocrResult);
+
   return {
     success: true,
 
-    data: {
-      name: extractName(texts),
+   data: {
+  name: extractName(texts),
 
-      amount: extractAmount(ocrResult),
+ amount_text: amountText,
 
-      paymentDate,
-      paymentTime,
+  paymentDate,
+  paymentTime,
 
-      paymentReferences:
-        extractPaymentReferences(texts),
+  paymentPurpose:
+    messageContext.purpose,
 
+  messageReferences:
+    messageContext.references,
+
+  paymentReferences:
+    extractPaymentReferences(texts, {
       transactionId:
         extractTransactionId(texts),
 
       googleTransactionId:
         extractGoogleTransactionId(texts),
 
-      utr: null,
+      paymentDate,
+      paymentTime,
 
-      payee:
-        extractPayee(texts),
+     amountText,
+  }),
 
-      bank:
-        extractBank(texts),
+  transactionId:
+    extractTransactionId(texts),
 
-      status: "unverified",
-    },
+  googleTransactionId:
+    extractGoogleTransactionId(texts),
+
+  utr: null,
+
+  payee:
+    extractPayee(texts),
+
+  bank:
+    extractBank(texts),
+
+  status: "unverified",
+},
   };
 }
 

@@ -21,7 +21,7 @@ async function savePaymentRecord({
       ).toISOString(),
 
       name: paymentData.name,
-      amount: paymentData.amount,
+  amount_text: paymentData.amount_text,
 
       payment_date: paymentData.paymentDate,
       payment_time: paymentData.paymentTime,
@@ -34,6 +34,13 @@ async function savePaymentRecord({
 
       payment_references:
         paymentData.paymentReferences || [],
+
+        payment_purpose:
+  paymentData.paymentPurpose || null,
+
+message_references:
+  paymentData.messageReferences || [],
+
 
       status:
         paymentData.status || "unverified",

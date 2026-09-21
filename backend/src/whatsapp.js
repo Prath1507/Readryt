@@ -165,7 +165,10 @@ const startWhatsApp = async (
     if (paymentResult.isPayment) {
      // 4. Extract payment information
 const extractedPayment =
-  extractPaymentData(ocrResult);
+  extractPaymentData(
+    ocrResult,
+    message.body
+  );
 
 if (!extractedPayment.success) {
   throw new Error(

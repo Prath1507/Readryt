@@ -189,18 +189,20 @@ function Home() {
         <p>No payment records found.</p>
       ) : (
         <table border="1" cellPadding="8">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Amount</th>
-              <th>References</th>
-              <th>Transaction ID</th>
-              <th>UTR</th>
-              <th>Status</th>
-            </tr>
-          </thead>
+         <thead>
+  <tr>
+    <th>Date</th>
+    <th>Name</th>
+    <th>Phone</th>
+    <th>Amount</th>
+    <th>Purpose</th>
+    <th>Payment References</th>
+    <th>Message References</th>
+    <th>Transaction ID</th>
+    <th>UTR</th>
+    <th>Status</th>
+  </tr>
+</thead>
 
           <tbody>
             {payments.map((payment) => (
@@ -217,21 +219,27 @@ function Home() {
                   {payment.whatsapp_sender || "-"}
                 </td>
 
-                <td>
-                  {payment.amount !== null
-                    ? payment.amount
-                    : "-"}
-                </td>
+               <td>
+  {payment.amount_text || "-"}
+</td>
 
-                <td>
-                  {Array.isArray(
-                    payment.payment_references
-                  )
-                    ? payment.payment_references.join(
-                        ", "
-                      )
-                    : "-"}
-                </td>
+<td>
+  {payment.payment_purpose || "-"}
+</td>
+
+<td>
+  {Array.isArray(payment.payment_references)
+    ? payment.payment_references.join(", ")
+    : "-"}
+</td>
+
+<td>
+  {Array.isArray(payment.message_references)
+    ? payment.message_references.join(", ")
+    : "-"}
+</td>
+
+               
 
                 <td>
                   {payment.transaction_id || "-"}

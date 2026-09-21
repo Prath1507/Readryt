@@ -37,13 +37,14 @@ const runOCR = (imagePath) => {
     });
 
     python.on("close", (code) => {
-      if (code !== 0) {
-        console.error("OCR stderr:", stderr);
+     if (code !== 0) {
+  console.error("OCR stdout:", stdout);
+  console.error("OCR stderr:", stderr);
 
-        return reject(
-          new Error(`OCR process exited with code ${code}`)
-        );
-      }
+  return reject(
+    new Error(`OCR process exited with code ${code}`)
+  );
+}
 
       try {
         const result = JSON.parse(stdout.trim());
